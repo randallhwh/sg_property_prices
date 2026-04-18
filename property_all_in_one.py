@@ -27,21 +27,28 @@ SAVE_KEYS = [
     "renovation","legal_purchase","valuation_fee",
 ]
 
-def load_inputs():
-    if os.path.exists(CONFIG_FILE):
-        try:
-            with open(CONFIG_FILE) as f: return json.load(f)
-        except Exception: pass
-    return {}
-
-def save_inputs(num_periods):
+def build_save_json():
+    """Return current inputs as a JSON string (for download)."""
+    n = math.ceil(st.session_state.get("loan_tenor", 30) / 5)
     data = {k: st.session_state[k] for k in SAVE_KEYS if k in st.session_state}
-    for k in ("loan_start","otp_date"):
+    for k in ("loan_start", "otp_date"):
         if k in st.session_state: data[k] = str(st.session_state[k])
-    for i in range(num_periods):
-        for k in [f"b1_fixed_{i}",f"b1_var_{i}",f"b2_fixed_{i}",f"b2_var_{i}",f"rate_{i}"]:
+    for i in range(n):
+        for k in [f"b1_fixed_{i}", f"b1_var_{i}", f"b2_fixed_{i}", f"b2_var_{i}", f"rate_{i}"]:
             if k in st.session_state: data[k] = st.session_state[k]
-    with open(CONFIG_FILE,"w") as f: json.dump(data, f, indent=2)
+    return json.dumps(data, indent=2)
+
+def apply_loaded_inputs(raw: dict):
+    """Write a loaded dict into session_state and fix date types."""
+    merged = dict(BASE_DEFAULTS)
+    merged.update(raw)
+    for k, v in merged.items():
+        st.session_state[k] = v
+    for dk in ("loan_start", "otp_date"):
+        val = st.session_state.get(dk)
+        if isinstance(val, str):
+            try: st.session_state[dk] = date.fromisoformat(val)
+            except (ValueError, TypeError): pass
 
 # Don't auto-load on startup — widgets always start with hardcoded defaults.
 # Use "Fill Last Saved" button to restore a previous session.
@@ -245,29 +252,22 @@ def tdsr_max_loan(gross_mo, other_debt_mo, years, limit=0.55):
 with st.sidebar:
     st.markdown("## 🏠 Inputs")
 
-    # ── Load / Save buttons ────────────────────────────────────────────────────
-    _btn_l, _btn_r = st.columns(2)
-    with _btn_l:
-        if st.button("📂 Fill Last Saved", use_container_width=True,
-                     help="Start from base defaults, then overlay your last saved inputs"):
-            _merged = dict(BASE_DEFAULTS)
-            _merged.update(load_inputs())          # saved JSON overrides base defaults
-            for _k, _v in _merged.items():
-                st.session_state[_k] = _v
-            # st.date_input requires actual date objects in session_state (not strings)
-            for _dk in ("loan_start", "otp_date"):
-                _raw = st.session_state.get(_dk)
-                if isinstance(_raw, str):
-                    try:
-                        st.session_state[_dk] = date.fromisoformat(_raw)
-                    except (ValueError, TypeError):
-                        pass
+    # ── Load / Save ────────────────────────────────────────────────────────────
+    _uploaded = st.file_uploader("📂 Load saved inputs (JSON)", type="json",
+                                  label_visibility="collapsed", key="json_uploader",
+                                  help="Upload a previously saved last_inputs.json")
+    st.caption("⬆ Upload JSON to restore · ⬇ Download to save")
+    if _uploaded is not None:
+        _uid = (_uploaded.name, _uploaded.size)
+        if st.session_state.get("_last_upload_id") != _uid:
+            st.session_state["_last_upload_id"] = _uid
+            apply_loaded_inputs(json.load(_uploaded))
             st.rerun()
-    with _btn_r:
-        if st.button("💾 Save Inputs", use_container_width=True,
-                     help="Save current inputs to last_inputs.json"):
-            save_inputs(math.ceil(st.session_state.get("loan_tenor", 30) / 5))
-            st.success("✅ Saved")
+
+    st.download_button("💾 Save Inputs", data=build_save_json(),
+                       file_name="last_inputs.json", mime="application/json",
+                       use_container_width=True,
+                       help="Download current inputs as JSON to reload later")
 
     st.markdown("### Property & Loan")
     property_value   = st.number_input("Property Value (SGD)", value=sv("property_value",2_500_000), step=50_000, format="%d", key="property_value")
