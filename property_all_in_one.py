@@ -9,6 +9,8 @@ from datetime import date, timedelta
 from dateutil.relativedelta import relativedelta
 
 # ── Persistence ───────────────────────────────────────────────────────────────
+# On Streamlit Cloud STREAMLIT_SHARING_MODE is set; locally it is absent.
+IS_CLOUD    = bool(os.environ.get("STREAMLIT_SHARING_MODE"))
 CONFIG_FILE = os.path.join(os.path.dirname(__file__), "last_inputs.json")
 
 SAVE_KEYS = [
@@ -27,8 +29,7 @@ SAVE_KEYS = [
     "renovation","legal_purchase","valuation_fee",
 ]
 
-def build_save_json():
-    """Return current inputs as a JSON string (for download)."""
+def _collect_state():
     n = math.ceil(st.session_state.get("loan_tenor", 30) / 5)
     data = {k: st.session_state[k] for k in SAVE_KEYS if k in st.session_state}
     for k in ("loan_start", "otp_date"):
@@ -36,10 +37,22 @@ def build_save_json():
     for i in range(n):
         for k in [f"b1_fixed_{i}", f"b1_var_{i}", f"b2_fixed_{i}", f"b2_var_{i}", f"rate_{i}"]:
             if k in st.session_state: data[k] = st.session_state[k]
-    return json.dumps(data, indent=2)
+    return data
+
+def build_save_json():
+    return json.dumps(_collect_state(), indent=2)
+
+def save_to_file():
+    with open(CONFIG_FILE, "w") as f: json.dump(_collect_state(), f, indent=2)
+
+def load_from_file():
+    if os.path.exists(CONFIG_FILE):
+        try:
+            with open(CONFIG_FILE) as f: return json.load(f)
+        except Exception: pass
+    return {}
 
 def apply_loaded_inputs(raw: dict):
-    """Write a loaded dict into session_state and fix date types."""
     merged = dict(BASE_DEFAULTS)
     merged.update(raw)
     for k, v in merged.items():
@@ -50,9 +63,9 @@ def apply_loaded_inputs(raw: dict):
             try: st.session_state[dk] = date.fromisoformat(val)
             except (ValueError, TypeError): pass
 
-# Don't auto-load on startup — widgets always start with hardcoded defaults.
-# Use "Fill Last Saved" button to restore a previous session.
-saved = {}
+# Local: auto-load last_inputs.json on startup so the app remembers your session.
+# Cloud: always start with hardcoded defaults; use download/upload to persist.
+saved = load_from_file() if not IS_CLOUD else {}
 def sv(key, default): return saved.get(key, default)
 
 # ── Base defaults for "Fill Last Saved" button ────────────────────────────────
@@ -253,21 +266,28 @@ with st.sidebar:
     st.markdown("## 🏠 Inputs")
 
     # ── Load / Save ────────────────────────────────────────────────────────────
-    _uploaded = st.file_uploader("📂 Load saved inputs (JSON)", type="json",
-                                  label_visibility="collapsed", key="json_uploader",
-                                  help="Upload a previously saved last_inputs.json")
-    st.caption("⬆ Upload JSON to restore · ⬇ Download to save")
-    if _uploaded is not None:
-        _uid = (_uploaded.name, _uploaded.size)
-        if st.session_state.get("_last_upload_id") != _uid:
-            st.session_state["_last_upload_id"] = _uid
-            apply_loaded_inputs(json.load(_uploaded))
-            st.rerun()
-
-    st.download_button("💾 Save Inputs", data=build_save_json(),
-                       file_name="last_inputs.json", mime="application/json",
-                       use_container_width=True,
-                       help="Download current inputs as JSON to reload later")
+    if IS_CLOUD:
+        # Cloud: download JSON to save; upload JSON to restore
+        _uploaded = st.file_uploader("📂 Load saved inputs (JSON)", type="json",
+                                      label_visibility="collapsed", key="json_uploader",
+                                      help="Upload a previously saved last_inputs.json")
+        st.caption("⬆ Upload JSON to restore · ⬇ Download to save")
+        if _uploaded is not None:
+            _uid = (_uploaded.name, _uploaded.size)
+            if st.session_state.get("_last_upload_id") != _uid:
+                st.session_state["_last_upload_id"] = _uid
+                apply_loaded_inputs(json.load(_uploaded))
+                st.rerun()
+        st.download_button("💾 Save Inputs", data=build_save_json(),
+                           file_name="last_inputs.json", mime="application/json",
+                           use_container_width=True,
+                           help="Download current inputs as JSON to reload later")
+    else:
+        # Local: auto-saves to last_inputs.json; button writes immediately
+        if st.button("💾 Save Inputs", use_container_width=True,
+                     help="Save current inputs to last_inputs.json"):
+            save_to_file()
+            st.success("✅ Saved")
 
     st.markdown("### Property & Loan")
     property_value   = st.number_input("Property Value (SGD)", value=sv("property_value",2_500_000), step=50_000, format="%d", key="property_value")
