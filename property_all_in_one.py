@@ -654,13 +654,17 @@ with tab_purch:
 
     with c2:
         st.markdown('<div class="section-label">Cash Sources</div>', unsafe_allow_html=True)
-        _src = [("Cash B1",cash_b1),("CPF OA B1",cpf_oa_b1)]
-        if include_b2: _src += [("Cash B2",cash_b2),("CPF OA B2",cpf_oa_b2)]
-        _src += [(f"Property Sale (SSD {fmt(ssd)})",sale_proceeds),("Loan Amount",loan_amount)]
-        for label,val in _src:
-            c = "color:#c0392b" if val<0 else ""
+        _own_src = [("Cash B1", cash_b1), ("CPF OA B1", cpf_oa_b1)]
+        if include_b2: _own_src += [("Cash B2", cash_b2), ("CPF OA B2", cpf_oa_b2)]
+        _own_src += [(f"Property Sale (SSD {fmt(ssd)})", sale_proceeds)]
+        own_funds = sum(v for _, v in _own_src)
+        for label, val in _own_src:
+            c = "color:#c0392b" if val < 0 else ""
             st.markdown(f'<div class="row-item"><span class="row-label">{label}</span><span style="{c}">{fmt(val)}</span></div>', unsafe_allow_html=True)
-        clr = "#1e7e5c" if cash_surplus>=0 else "#c0392b"
+        own_clr = "#1e7e5c" if own_funds >= down_payment else "#c0392b"
+        st.markdown(f'<div class="row-total"><span>Own Funds</span><span style="color:{own_clr}">{fmt(own_funds)}</span></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="row-item" style="margin-top:6px"><span class="row-label">+ Loan Amount (TDSR-limited)</span><span>{fmt(loan_amount)}</span></div>', unsafe_allow_html=True)
+        clr = "#1e7e5c" if cash_surplus >= 0 else "#c0392b"
         st.markdown(f'<div class="row-total"><span>Surplus / (Shortfall)</span><span style="color:{clr}">{fmt(cash_surplus)}</span></div>', unsafe_allow_html=True)
 
     with c3:
