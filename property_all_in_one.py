@@ -1,4 +1,4 @@
-"""SG Property All-in-One — Purchase · Affordability · Eligibility · Tax"""
+"""Ranz Property Model — Purchase · Affordability · Eligibility · Tax"""
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -86,7 +86,7 @@ def parse_date(key, default="2026-08-01"):
     except: return date.fromisoformat(default)
 
 # ── Page config ───────────────────────────────────────────────────────────────
-st.set_page_config(page_title="SG Property All-in-One", page_icon="🏠",
+st.set_page_config(page_title="Ranz Property Model", page_icon="🏠",
                    layout="wide", initial_sidebar_state="expanded")
 
 st.markdown("""
@@ -361,15 +361,15 @@ with st.sidebar:
         cpf_b2 = 0; cpf_b2_pct = 0
 
     st.markdown("### Monthly Expenses")
-    exp_food      = st.number_input("Food & Groceries",         value=sv("exp_food",3_000),      step=100, format="%d", key="exp_food")
-    exp_transport = st.number_input("Transport / Car",           value=sv("exp_transport",3_500), step=100, format="%d", key="exp_transport")
-    exp_utilities = st.number_input("Utilities & Telco",         value=sv("exp_utilities",1_300), step=50,  format="%d", key="exp_utilities")
-    exp_insurance = st.number_input("Insurance Premiums",        value=sv("exp_insurance",3_000), step=100, format="%d", key="exp_insurance")
-    exp_childcare = st.number_input("Childcare / Education",     value=sv("exp_childcare",2_000), step=100, format="%d", key="exp_childcare")
+    exp_food      = st.number_input("Food & Groceries",         value=sv("exp_food",1_000),      step=100, format="%d", key="exp_food")
+    exp_transport = st.number_input("Transport / Car",           value=sv("exp_transport",1_000), step=100, format="%d", key="exp_transport")
+    exp_utilities = st.number_input("Utilities & Telco",         value=sv("exp_utilities",1_000), step=50,  format="%d", key="exp_utilities")
+    exp_insurance = st.number_input("Insurance Premiums",        value=sv("exp_insurance",1_000), step=100, format="%d", key="exp_insurance")
+    exp_childcare = st.number_input("Childcare / Education",     value=sv("exp_childcare",1_000), step=100, format="%d", key="exp_childcare")
     exp_lifestyle = st.number_input("Lifestyle & Entertainment", value=sv("exp_lifestyle",1_000), step=100, format="%d", key="exp_lifestyle")
     exp_travel    = st.number_input("Travel (monthly amort.)",   value=sv("exp_travel",1_000),    step=100, format="%d", key="exp_travel")
     exp_family    = st.number_input("Family Support",            value=sv("exp_family",1_000),    step=100, format="%d", key="exp_family")
-    exp_other     = st.number_input("Other / Misc",              value=sv("exp_other",4_000),     step=100, format="%d", key="exp_other")
+    exp_other     = st.number_input("Other / Misc",              value=sv("exp_other",1_000),     step=100, format="%d", key="exp_other")
 
     st.markdown("### Existing Debt")
     existing_debt = st.number_input("Other Monthly Debt", value=sv("existing_monthly_debt",0), step=100, format="%d", key="existing_monthly_debt")
@@ -393,7 +393,7 @@ with st.sidebar:
 # ─────────────────────────────────────────────────────────────────────────────
 # INCOME & RATE SCHEDULE
 # ─────────────────────────────────────────────────────────────────────────────
-st.markdown('<div class="hero-title">SG Property All-in-One</div>', unsafe_allow_html=True)
+st.markdown('<div class="hero-title">Ranz Property Model</div>', unsafe_allow_html=True)
 st.markdown('<div class="hero-sub">Purchase · Affordability · Eligibility · Tax · Singapore</div>', unsafe_allow_html=True)
 
 num_periods   = math.ceil(loan_tenor/5)
