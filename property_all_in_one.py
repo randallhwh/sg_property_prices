@@ -262,6 +262,12 @@ def tdsr_max_loan(gross_mo, other_debt_mo, years, limit=0.55):
 # ─────────────────────────────────────────────────────────────────────────────
 # SIDEBAR
 # ─────────────────────────────────────────────────────────────────────────────
+def _fl(base, key, default=0):
+    """Append comma-formatted current value to a number_input label."""
+    v = st.session_state.get(key, default)
+    if isinstance(v, (int, float)) and abs(v) >= 1000:
+        return f"{base}  —  S${int(v):,}"
+    return base
 with st.sidebar:
     st.markdown("## 🏠 Inputs")
 
@@ -290,13 +296,13 @@ with st.sidebar:
             st.success("✅ Saved")
 
     st.markdown("### Property & Loan")
-    property_value   = st.number_input("Property Value (SGD)", value=sv("property_value",2_500_000), step=50_000, format="%d", key="property_value")
+    property_value   = st.number_input(_fl("Property Value (SGD)","property_value",2_500_000), value=sv("property_value",2_500_000), step=50_000, format="%d", key="property_value")
     down_pct         = st.slider("Down Payment (%)", 5, 75, sv("down_payment_pct",25), key="down_payment_pct")
     loan_tenor       = st.slider("Loan Tenor (years)", 5, 35, sv("loan_tenor",30), key="loan_tenor")
-    extra_monthly    = st.number_input("Extra Monthly Repayment", value=sv("extra_monthly",0), step=500, format="%d", key="extra_monthly")
-    renovation       = st.number_input("Renovation", value=sv("renovation",100_000), step=10_000, format="%d", key="renovation")
-    legal_purchase   = st.number_input("Legal Fees — Purchase", value=sv("legal_purchase",3_500), step=500, format="%d", key="legal_purchase")
-    valuation_fee    = st.number_input("Valuation Fee", value=sv("valuation_fee",500), step=100, format="%d", key="valuation_fee")
+    extra_monthly    = st.number_input(_fl("Extra Monthly Repayment","extra_monthly",0), value=sv("extra_monthly",0), step=500, format="%d", key="extra_monthly")
+    renovation       = st.number_input(_fl("Renovation","renovation",100_000), value=sv("renovation",100_000), step=10_000, format="%d", key="renovation")
+    legal_purchase   = st.number_input(_fl("Legal Fees — Purchase","legal_purchase",3_500), value=sv("legal_purchase",3_500), step=500, format="%d", key="legal_purchase")
+    valuation_fee    = st.number_input(_fl("Valuation Fee","valuation_fee",500), value=sv("valuation_fee",500), step=100, format="%d", key="valuation_fee")
     loan_start       = st.date_input("Loan Start Date", value=parse_date("loan_start","2026-08-01"), key="loan_start")
     otp_date         = st.date_input("OTP Date", value=parse_date("otp_date","2026-08-01"), key="otp_date")
     property_tenure  = st.selectbox("Property Tenure",
@@ -319,43 +325,43 @@ with st.sidebar:
                                   help="SC married couple: refunded if existing property sold within 6 months of completion.")
 
     st.markdown("### Property Sale")
-    sale_price       = st.number_input("Sale Price", value=sv("sale_price",950_000), step=10_000, format="%d", key="sale_price")
+    sale_price       = st.number_input(_fl("Sale Price","sale_price",950_000), value=sv("sale_price",950_000), step=10_000, format="%d", key="sale_price")
     sale_agent_pct   = st.number_input("Agent Commission (%)", value=sv("sale_agent_pct",1.0), step=0.25, format="%.2f", key="sale_agent_pct")
-    sale_legal       = st.number_input("Legal Fees — Sale", value=sv("sale_legal",2_500), step=500, format="%d", key="sale_legal")
-    sale_outstanding = st.number_input("Outstanding Mortgage", value=sv("sale_outstanding_mortgage",360_000), step=10_000, format="%d", key="sale_outstanding_mortgage")
+    sale_legal       = st.number_input(_fl("Legal Fees — Sale","sale_legal",2_500), value=sv("sale_legal",2_500), step=500, format="%d", key="sale_legal")
+    sale_outstanding = st.number_input(_fl("Outstanding Mortgage","sale_outstanding_mortgage",360_000), value=sv("sale_outstanding_mortgage",360_000), step=10_000, format="%d", key="sale_outstanding_mortgage")
     sale_held_yrs    = st.number_input("Years Held (SSD)", value=sv("sale_holding_years",4.0), step=0.5, format="%.1f", key="sale_holding_years")
     st.caption("CPF refund on sale (principal + accrued interest at 2.5% p.a.)")
-    cpf_in_existing_b1 = st.number_input("CPF Used in Existing Property — B1", value=sv("cpf_in_existing_b1",150_000), step=5_000, format="%d", key="cpf_in_existing_b1",
+    cpf_in_existing_b1 = st.number_input(_fl("CPF Used in Existing Property — B1","cpf_in_existing_b1",150_000), value=sv("cpf_in_existing_b1",150_000), step=5_000, format="%d", key="cpf_in_existing_b1",
                                           help="Total CPF OA withdrawn (principal only). Accrued interest calculated automatically.")
-    cpf_in_existing_b2 = st.number_input("CPF Used in Existing Property — B2", value=sv("cpf_in_existing_b2",0), step=5_000, format="%d", key="cpf_in_existing_b2")
+    cpf_in_existing_b2 = st.number_input(_fl("CPF Used in Existing Property — B2","cpf_in_existing_b2",0), value=sv("cpf_in_existing_b2",0), step=5_000, format="%d", key="cpf_in_existing_b2")
     ownership_b1_pct   = st.slider("Ownership Share — B1 (%)", 1, 100, sv("ownership_b1_pct",50), key="ownership_b1_pct",
                                     help="B1 share of net sale proceeds after CPF refunds")
 
     st.markdown("### Cash & CPF Sources")
-    cash_b1   = st.number_input("Cash Savings — B1", value=sv("cash_b1",100_000), step=10_000, format="%d", key="cash_b1")
-    cpf_oa_b1 = st.number_input("CPF OA Balance — B1", value=sv("cpf_oa_b1",15_000), step=1_000, format="%d", key="cpf_oa_b1",
+    cash_b1   = st.number_input(_fl("Cash Savings — B1","cash_b1",100_000), value=sv("cash_b1",100_000), step=10_000, format="%d", key="cash_b1")
+    cpf_oa_b1 = st.number_input(_fl("CPF OA Balance — B1","cpf_oa_b1",15_000), value=sv("cpf_oa_b1",15_000), step=1_000, format="%d", key="cpf_oa_b1",
                                  help="One-time OA balance for down payment")
     st.markdown("---")
     include_b2 = st.toggle("🤝 Joint Borrower 2", value=bool(sv("include_b2", True)), key="include_b2")
     if include_b2:
-        cash_b2   = st.number_input("Cash Savings — B2", value=sv("cash_b2",60_000), step=10_000, format="%d", key="cash_b2")
-        cpf_oa_b2 = st.number_input("CPF OA Balance — B2", value=sv("cpf_oa_b2",0), step=1_000, format="%d", key="cpf_oa_b2")
+        cash_b2   = st.number_input(_fl("Cash Savings — B2","cash_b2",60_000), value=sv("cash_b2",60_000), step=10_000, format="%d", key="cash_b2")
+        cpf_oa_b2 = st.number_input(_fl("CPF OA Balance — B2","cpf_oa_b2",0), value=sv("cpf_oa_b2",0), step=1_000, format="%d", key="cpf_oa_b2")
     else:
         cash_b2 = 0; cpf_oa_b2 = 0
 
     st.markdown("### Variable Income & Rental")
     variable_haircut = st.slider("Variable Income Recognised (%)", 0, 100, sv("variable_haircut",70), key="variable_haircut",
                                   help="~70% is standard SG bank practice")
-    rental_income    = st.number_input("Rental Income p.a.", value=sv("rental_income",0), step=1_000, format="%d", key="rental_income")
+    rental_income    = st.number_input(_fl("Rental Income p.a.","rental_income",0), value=sv("rental_income",0), step=1_000, format="%d", key="rental_income")
     rental_haircut   = st.slider("Rental Credit (%)", 0, 100, sv("rental_haircut",70), key="rental_haircut")
 
     st.markdown("### CPF — Borrower 1 (monthly)")
-    cpf_b1     = st.number_input("Monthly CPF OA Contribution", value=sv("cpf_b1",1_840), step=100, format="%d", key="cpf_b1")
+    cpf_b1     = st.number_input(_fl("Monthly CPF OA Contribution","cpf_b1",1_840), value=sv("cpf_b1",1_840), step=100, format="%d", key="cpf_b1")
     cpf_b1_pct = st.slider("CPF for Mortgage (%)", 0, 100, sv("cpf_b1_pct",100), key="cpf_b1_pct")
 
     if include_b2:
         st.markdown("### CPF — Borrower 2 (monthly)")
-        cpf_b2     = st.number_input("Monthly CPF OA Contribution", value=sv("cpf_b2",600), step=100, format="%d", key="cpf_b2")
+        cpf_b2     = st.number_input(_fl("Monthly CPF OA Contribution","cpf_b2",600), value=sv("cpf_b2",600), step=100, format="%d", key="cpf_b2")
         cpf_b2_pct = st.slider("CPF for Mortgage (%)", 0, 100, sv("cpf_b2_pct",60), key="cpf_b2_pct")
     else:
         cpf_b2 = 0; cpf_b2_pct = 0
@@ -418,14 +424,14 @@ with st.expander("📅 Income & Rate Schedule — 5-Year Periods", expanded=True
                 cb1 = st.container()
             with cb1:
                 st.markdown('<span class="borrower-tag tag-b1">👤 Borrower 1</span>', unsafe_allow_html=True)
-                fb1 = st.number_input("Fixed p.a.", value=sv(f"b1_fixed_{i}", 100_000),
+                fb1 = st.number_input(_fl("Fixed p.a.", f"b1_fixed_{i}", 100_000), value=sv(f"b1_fixed_{i}", 100_000),
                                        step=5000, format="%d", key=f"b1_fixed_{i}")
                 vb1 = st.slider("Bonus %", 0, 150, sv(f"b1_var_{i}", 0), key=f"b1_var_{i}")
                 periods_b1.append({"fixed": fb1, "var_pct": vb1})
             if include_b2:
                 with cb2:
                     st.markdown('<span class="borrower-tag tag-b2">👩 Borrower 2</span>', unsafe_allow_html=True)
-                    fb2 = st.number_input("Fixed p.a.", value=sv(f"b2_fixed_{i}", 100_000),
+                    fb2 = st.number_input(_fl("Fixed p.a.", f"b2_fixed_{i}", 100_000), value=sv(f"b2_fixed_{i}", 100_000),
                                            step=5000, format="%d", key=f"b2_fixed_{i}")
                     vb2 = st.slider("Bonus %", 0, 150, sv(f"b2_var_{i}", 0), key=f"b2_var_{i}")
                     periods_b2.append({"fixed": fb2, "var_pct": vb2})
