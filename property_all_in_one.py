@@ -27,6 +27,7 @@ SAVE_KEYS = [
     "b2_num_children","b2_spouse_working",
     "cpf_in_existing_b1","cpf_in_existing_b2","ownership_b1_pct",
     "renovation","legal_purchase","valuation_fee",
+    "monthly_maintenance","lease_remaining_yrs",
 ]
 
 def _collect_state():
@@ -141,6 +142,14 @@ def recognised_income(fixed_pa, var_pct, haircut):
     return fixed_pa/12 + (fixed_pa * var_pct/100 / 12) * haircut/100
 
 def period_idx(yr, n): return min((yr-1)//5, n-1)
+
+def lease_value_factor(remaining):
+    """Simplified Bala's curve — fraction of freehold-equivalent value at a given remaining lease."""
+    if remaining >= 79:   return 1.00
+    elif remaining >= 60: return 0.88 + (remaining - 60) / 19 * 0.12
+    elif remaining >= 40: return 0.63 + (remaining - 40) / 20 * 0.25
+    elif remaining >= 20: return 0.32 + (remaining - 20) / 20 * 0.31
+    else:                 return max(0.0, remaining / 20 * 0.32)
 
 # ── Singapore Tax Engine (YA2024) ─────────────────────────────────────────────
 TAX_BRACKETS = [(20000,0),(10000,.02),(10000,.035),(40000,.07),(40000,.115),
@@ -309,6 +318,14 @@ with st.sidebar:
                                     ["Freehold","99-yr Leasehold (new / ≥60yr left)","99-yr Leasehold (30–59yr left)","99-yr Leasehold (<30yr left)"],
                                     index=["Freehold","99-yr Leasehold (new / ≥60yr left)","99-yr Leasehold (30–59yr left)","99-yr Leasehold (<30yr left)"].index(
                                         sv("property_tenure","Freehold")), key="property_tenure")
+    monthly_maintenance = st.number_input(_fl("Monthly Maintenance Fee","monthly_maintenance",500), value=sv("monthly_maintenance",500), step=50, format="%d", key="monthly_maintenance",
+                                           help="Condo MC fee, sinking fund, or landed maintenance. Used in Exit Strategy tab.")
+    is_leasehold = "Leasehold" in property_tenure
+    if is_leasehold:
+        _lr_default = 90 if "new" in property_tenure or "≥60" in property_tenure else (45 if "30–59" in property_tenure else 20)
+        lease_remaining_yrs = st.slider("Remaining Lease (years)", 1, 99, sv("lease_remaining_yrs", _lr_default), key="lease_remaining_yrs")
+    else:
+        lease_remaining_yrs = 999
     st.caption("💡 Interest rates set per 5-year period in the schedule below.")
 
     st.markdown("### Stamp Duty")
@@ -633,7 +650,7 @@ df_s2, fin_s2 = build_scenario(0.04,0.01,12,False)
 # TABS
 # ─────────────────────────────────────────────────────────────────────────────
 (tab_purch, tab_elig, tab_reg, tab_tl,
- tab_aff,   tab_tax,  tab_loan, tab_sd, tab_sens) = st.tabs([
+ tab_aff,   tab_tax,  tab_loan, tab_sd, tab_sens, tab_exit) = st.tabs([
     "📊 Purchase Summary",
     "🏦 Mortgage Eligibility",
     "⚠️ Regulatory Checks",
@@ -643,6 +660,7 @@ df_s2, fin_s2 = build_scenario(0.04,0.01,12,False)
     "💳 Loan Schedule",
     "📐 Stamp Duty",
     "📈 Sensitivity",
+    "🚪 Exit Strategy",
 ])
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1630,3 +1648,236 @@ with tab_sens:
                      (f"Months TDSR > 55%",str(months_over55)),
                      ("Overall Cash Surplus",fmt(cash_surplus))]:
             st.write(f"{k}: **{v}**")
+
+# ══════════════════════════════════════════════════════════════════════════════
+# TAB 10 — EXIT STRATEGY
+# ══════════════════════════════════════════════════════════════════════════════
+with tab_exit:
+    st.markdown('<div class="section-label">Exit Strategy — True Cost of Ownership</div>', unsafe_allow_html=True)
+    st.caption("All costs incurred over a holding period, lease decay for leasehold properties, "
+               "and net P&L at exit under different appreciation assumptions.")
+
+    # ── Inputs row ─────────────────────────────────────────────────────────────
+    xi1, xi2, xi3 = st.columns(3)
+    with xi1:
+        x_app = st.slider("Annual Appreciation (%)", 0.0, 8.0, 3.0, 0.5, key="exit_app") / 100
+    with xi2:
+        x_sell_pct = st.slider("Selling Costs — agent + legal (%)", 0.5, 3.0, 2.0, 0.25, key="exit_sell_pct") / 100
+    with xi3:
+        x_maint = monthly_maintenance  # from sidebar; shown as info
+        st.metric("Monthly Maintenance Fee", fmt(x_maint))
+
+    hold_years = sorted(set([1, 3, 5, 7, 10, 15, min(20, loan_tenor), loan_tenor]))
+    hold_years = [y for y in hold_years if y <= loan_tenor]
+
+    # ── One-time buying costs (fixed regardless of hold period) ────────────────
+    buying_costs  = bsd + absd_net + legal_purchase + valuation_fee
+    reno_cost     = renovation
+
+    # ── Leasehold decay setup ──────────────────────────────────────────────────
+    is_lh = is_leasehold
+    if is_lh:
+        lvf_buy = lease_value_factor(lease_remaining_yrs)
+        fh_equiv = property_value / lvf_buy if lvf_buy > 0 else property_value
+
+    def exit_value(hold_yrs):
+        """Property value at exit, adjusted for appreciation and lease decay."""
+        if is_lh:
+            remaining_at_exit = max(0, lease_remaining_yrs - hold_yrs)
+            lvf_exit = lease_value_factor(remaining_at_exit)
+            return fh_equiv * (1 + x_app) ** hold_yrs * lvf_exit
+        else:
+            return property_value * (1 + x_app) ** hold_yrs
+
+    # ── Cost-of-ownership table ────────────────────────────────────────────────
+    st.markdown('<div class="section-label">Cumulative Cost Breakdown</div>', unsafe_allow_html=True)
+
+    _cpf_rate_mo = 0.025 / 12
+    _cpf_lump    = cpf_oa_b1 + cpf_oa_b2
+    _cpf_mo_use  = cpf_b1 * cpf_b1_pct / 100 + cpf_b2 * cpf_b2_pct / 100
+
+    def _cpf_refund_exit(months):
+        ci_lump = _cpf_lump * ((1 + _cpf_rate_mo) ** months - 1)
+        ci_mo   = sum(_cpf_mo_use * ((1 + _cpf_rate_mo) ** (months - j) - 1) for j in range(1, months + 1))
+        return _cpf_lump + _cpf_mo_use * months + ci_lump + ci_mo
+
+    cost_rows = []
+    pnl_rows  = []
+    for hy in hold_years:
+        months       = hy * 12
+        m_idx        = min(months - 1, len(df_amort) - 1)
+        cum_interest = df_amort["Interest"].iloc[:m_idx + 1].sum()
+        cum_maint    = x_maint * months
+        ssd_exit     = calc_ssd(exit_value(hy), hy)
+        selling_cost = exit_value(hy) * x_sell_pct + ssd_exit
+        total_cost_hold = buying_costs + reno_cost + cum_maint + cum_interest
+
+        cost_rows.append({
+            "Hold Period":     f"{hy}yr",
+            "Buying Costs":    buying_costs,
+            "Renovation":      reno_cost,
+            "Maintenance":     cum_maint,
+            "Interest Paid":   cum_interest,
+            "Selling Costs":   selling_cost,
+            "Total Outflow":   total_cost_hold + selling_cost,
+        })
+
+        # P&L
+        prop_val_exit = exit_value(hy)
+        loan_bal_exit = df_amort["Balance"].iloc[m_idx]
+        cpf_ref_exit  = _cpf_refund_exit(months)
+        gross_sale    = prop_val_exit * (1 - x_sell_pct) - ssd_exit
+        cash_in_hand  = gross_sale - loan_bal_exit - cpf_ref_exit
+        cum_cash_paid = sum(
+            max(df_amort[df_amort["Month"] == m]["Payment"].values[0]
+                - _cpf_mo_use, 0)
+            for m in range(1, months + 1)
+            if m <= len(df_amort)
+        )
+        total_cash_inv = down_payment + buying_costs + reno_cost + cum_maint + cum_cash_paid
+        net_gain       = cash_in_hand - (down_payment + buying_costs + reno_cost)
+        ann_ret        = (1 + net_gain / total_cash_inv) ** (1 / hy) - 1 if total_cash_inv > 0 and hy > 0 else 0
+
+        # Lease decay info
+        if is_lh:
+            rem_at_exit = max(0, lease_remaining_yrs - hy)
+            pure_app    = property_value * (1 + x_app) ** hy
+            decay_adj   = prop_val_exit - pure_app
+        else:
+            rem_at_exit = None
+            decay_adj   = 0.0
+
+        pnl_rows.append({
+            "Hold Period":      f"{hy}yr",
+            "Property Value":   prop_val_exit,
+            "Lease Decay Adj":  decay_adj,
+            "Gross Sale":       gross_sale,
+            "Loan Balance":     loan_bal_exit,
+            "CPF Refund":       cpf_ref_exit,
+            "Cash in Hand":     cash_in_hand,
+            "Cash Invested":    total_cash_inv,
+            "Net Gain":         net_gain,
+            "Ann. Return":      ann_ret,
+            "_rem":             rem_at_exit,
+        })
+
+    # Display cost table
+    df_cost = pd.DataFrame(cost_rows)
+    df_cost_disp = df_cost.copy()
+    for c in ["Buying Costs","Renovation","Maintenance","Interest Paid","Selling Costs","Total Outflow"]:
+        df_cost_disp[c] = df_cost_disp[c].map(lambda x: f"S${x:,.0f}")
+    st.dataframe(df_cost_disp, use_container_width=True, hide_index=True)
+
+    # ── Cost composition chart ─────────────────────────────────────────────────
+    xc1, xc2 = st.columns(2)
+    with xc1:
+        fig_cost = go.Figure()
+        cost_layers = [
+            ("Buying Costs",  [r["Buying Costs"]  for r in cost_rows], "#2980b9"),
+            ("Renovation",    [r["Renovation"]    for r in cost_rows], "#8e44ad"),
+            ("Maintenance",   [r["Maintenance"]   for r in cost_rows], "#e67e22"),
+            ("Interest Paid", [r["Interest Paid"] for r in cost_rows], "#c0392b"),
+            ("Selling Costs", [r["Selling Costs"] for r in cost_rows], "#7f8c8d"),
+        ]
+        xlbls = [r["Hold Period"] for r in cost_rows]
+        for name, vals, color in cost_layers:
+            fig_cost.add_trace(go.Bar(name=name, x=xlbls, y=vals, marker_color=color))
+        fig_cost.update_layout(
+            barmode="stack", height=320, paper_bgcolor="#f7f4ef", plot_bgcolor="#f7f4ef",
+            font=dict(family="DM Sans", color="#0f1923"),
+            title=dict(text="Cumulative Cost of Ownership", font=dict(size=12)),
+            legend=dict(orientation="h", y=-0.3, font=dict(size=10)),
+            margin=dict(l=0, r=0, t=40, b=10),
+            xaxis=dict(title="Hold Period", gridcolor="#e0dbd2"),
+            yaxis=dict(tickformat=",.0f", gridcolor="#e0dbd2", title="SGD"),
+        )
+        st.plotly_chart(fig_cost, use_container_width=True)
+
+    with xc2:
+        # Property value vs total outflow
+        prop_vals = [exit_value(hy) for hy in hold_years]
+        outflows  = [r["Total Outflow"] for r in cost_rows]
+        fig_pv = go.Figure()
+        fig_pv.add_trace(go.Scatter(x=xlbls, y=prop_vals, name="Property Value at Exit",
+                                     mode="lines+markers", line=dict(color="#1e7e5c", width=2.5),
+                                     marker=dict(size=7)))
+        fig_pv.add_trace(go.Scatter(x=xlbls, y=outflows, name="Total Outflow (all costs)",
+                                     mode="lines+markers", line=dict(color="#c0392b", width=2, dash="dash"),
+                                     marker=dict(size=7)))
+        if is_lh:
+            no_decay = [property_value * (1 + x_app) ** hy for hy in hold_years]
+            fig_pv.add_trace(go.Scatter(x=xlbls, y=no_decay, name="Value w/o Lease Decay",
+                                         mode="lines", line=dict(color="#aaa", width=1.5, dash="dot")))
+        fig_pv.update_layout(
+            height=320, paper_bgcolor="#f7f4ef", plot_bgcolor="#f7f4ef",
+            font=dict(family="DM Sans", color="#0f1923"),
+            title=dict(text="Property Value vs Total Outflow at Exit", font=dict(size=12)),
+            legend=dict(orientation="h", y=-0.3, font=dict(size=10)),
+            margin=dict(l=0, r=0, t=40, b=10),
+            xaxis=dict(title="Hold Period", gridcolor="#e0dbd2"),
+            yaxis=dict(tickformat=",.0f", gridcolor="#e0dbd2", title="SGD"),
+        )
+        st.plotly_chart(fig_pv, use_container_width=True)
+
+    # ── P&L table ──────────────────────────────────────────────────────────────
+    st.markdown('<div class="section-label">Net P&L at Exit</div>', unsafe_allow_html=True)
+    df_pnl = pd.DataFrame(pnl_rows)
+    pnl_disp = df_pnl[["Hold Period","Property Value","Lease Decay Adj","Gross Sale",
+                         "Loan Balance","CPF Refund","Cash in Hand","Cash Invested","Net Gain","Ann. Return"]].copy()
+    if not is_lh:
+        pnl_disp = pnl_disp.drop(columns=["Lease Decay Adj"])
+    for c in ["Property Value","Lease Decay Adj","Gross Sale","Loan Balance",
+               "CPF Refund","Cash in Hand","Cash Invested","Net Gain"]:
+        if c in pnl_disp.columns:
+            pnl_disp[c] = pnl_disp[c].map(lambda x: f"S${x:,.0f}")
+    pnl_disp["Ann. Return"] = df_pnl["Ann. Return"].map(lambda x: f"{x:.1%}")
+    pnl_disp["Cash in Hand"] = [
+        f"{'🟢' if r['Cash in Hand']>=0 else '🔴'} S${r['Cash in Hand']:,.0f}"
+        for r in pnl_rows
+    ]
+    st.dataframe(pnl_disp, use_container_width=True, hide_index=True)
+
+    if is_lh:
+        st.caption(f"**Lease Decay Adj** = additional value loss due to shorter remaining lease (Bala's curve). "
+                   f"At purchase: {lease_remaining_yrs}yr remaining (factor {lease_value_factor(lease_remaining_yrs):.2f}). "
+                   f"Freehold-equivalent reference: {fmt(fh_equiv)}.")
+
+    # ── Breakeven appreciation needed ──────────────────────────────────────────
+    st.markdown('<div class="section-label">Break-Even Appreciation Needed</div>', unsafe_allow_html=True)
+    be2_rows = []
+    for hy in hold_years:
+        months    = hy * 12
+        m_idx     = min(months - 1, len(df_amort) - 1)
+        cum_int   = df_amort["Interest"].iloc[:m_idx + 1].sum()
+        cum_maint = x_maint * months
+        total_out = buying_costs + reno_cost + cum_int + cum_maint
+        sell_c_pct = x_sell_pct
+        ssd_yrs    = hy
+        # Solve for r: property_value*(1+r)^hy*(1-sell_pct) - ssd(...) - loan_bal - cpf_ref = down_pmt + buying + reno + maint
+        # Approximation: ignore SSD iteration, use linear solve
+        loan_bal   = df_amort["Balance"].iloc[m_idx]
+        cpf_ref    = _cpf_refund_exit(months)
+        target_net = down_payment + buying_costs + reno_cost + cum_maint + loan_bal + cpf_ref
+        # property_value*(1+r)^hy * (1-sell_pct) = target_net → (1+r)^hy = target_net / (pv*(1-sell_pct))
+        if is_lh:
+            # Need: fh_equiv*(1+r)^hy * lvf_exit * (1-sell_pct) = target_net
+            rem_at_exit = max(0, lease_remaining_yrs - hy)
+            lvf_exit    = lease_value_factor(rem_at_exit)
+            denom       = fh_equiv * lvf_exit * (1 - sell_c_pct)
+        else:
+            denom = property_value * (1 - sell_c_pct)
+        if denom > 0:
+            r_be = (target_net / denom) ** (1 / hy) - 1 if hy > 0 else 0
+        else:
+            r_be = float("nan")
+        be2_rows.append({
+            "Hold Period":        f"{hy}yr",
+            "Total Outflow":      fmt(total_out),
+            "Loan Bal + CPF":     fmt(loan_bal + cpf_ref),
+            "Target Sale Price":  fmt(target_net / (1 - sell_c_pct)),
+            "Break-Even App. p.a.": f"{r_be:.1%}" if not math.isnan(r_be) else "—",
+            "vs Selected App.":   f"{'✅' if (not math.isnan(r_be) and r_be <= x_app) else '❌'} {r_be:.1%}" if not math.isnan(r_be) else "—",
+        })
+    st.dataframe(pd.DataFrame(be2_rows), use_container_width=True, hide_index=True)
+    st.caption("Break-even = minimum annual appreciation needed so that sale proceeds cover all capital invested, "
+               "loan balance, CPF refund, and selling costs.")
