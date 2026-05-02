@@ -294,26 +294,25 @@ with st.sidebar:
     st.markdown("## 🏠 Inputs")
 
     # ── Load / Save ────────────────────────────────────────────────────────────
-    if IS_CLOUD:
-        # Cloud: download JSON to save; upload JSON to restore
-        _uploaded = st.file_uploader("📂 Load saved inputs (JSON)", type="json",
-                                      label_visibility="collapsed", key="json_uploader",
-                                      help="Upload a previously saved last_inputs.json")
-        st.caption("⬆ Upload JSON to restore · ⬇ Download to save")
-        if _uploaded is not None:
-            _uid = (_uploaded.name, _uploaded.size)
-            if st.session_state.get("_last_upload_id") != _uid:
-                st.session_state["_last_upload_id"] = _uid
-                apply_loaded_inputs(json.load(_uploaded))
-                st.rerun()
-        st.download_button("💾 Save Inputs", data=build_save_json(),
-                           file_name="last_inputs.json", mime="application/json",
-                           use_container_width=True,
-                           help="Download current inputs as JSON to reload later")
-    else:
-        # Local: auto-saves to last_inputs.json; button writes immediately
-        if st.button("💾 Save Inputs", use_container_width=True,
-                     help="Save current inputs to last_inputs.json"):
+    # Upload / download works everywhere (cloud + local)
+    _uploaded = st.file_uploader("📂 Load saved inputs (JSON)", type="json",
+                                  label_visibility="collapsed", key="json_uploader",
+                                  help="Upload a previously saved last_inputs.json")
+    st.caption("⬆ Upload JSON to restore · ⬇ Download to save")
+    if _uploaded is not None:
+        _uid = (_uploaded.name, _uploaded.size)
+        if st.session_state.get("_last_upload_id") != _uid:
+            st.session_state["_last_upload_id"] = _uid
+            apply_loaded_inputs(json.load(_uploaded))
+            st.rerun()
+    st.download_button("💾 Save Inputs", data=build_save_json(),
+                       file_name="last_inputs.json", mime="application/json",
+                       use_container_width=True,
+                       help="Download current inputs as JSON to reload later")
+    if not IS_CLOUD:
+        # Local only: also write directly to disk for auto-load on next startup
+        if st.button("💾 Save to disk", use_container_width=True,
+                     help="Save current inputs to last_inputs.json for auto-load"):
             save_to_file()
             st.success("✅ Saved")
 
